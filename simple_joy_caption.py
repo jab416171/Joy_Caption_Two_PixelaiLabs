@@ -279,6 +279,11 @@ DEFAULT_MODELS = {
     "Meta-Llama-3.1-8B-Instruct-bnb-4bit": "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",
 }
 
+# GGUF model filenames mapping
+GGUF_MODEL_FILES = {
+    "Llama-3.1-8B-Lexi-Uncensored-V2-Q8_0-GGUF": "Llama-3.1-8B-Lexi-Uncensored-V2-Q8_0.gguf",
+}
+
 def download_gguf_model(repo_id, filename, model_name=None):
     """Download GGUF model file from Hugging Face"""
     try:
@@ -673,8 +678,11 @@ class SimpleLLMCaptionLoader:
                     print(f"This is a one-time download (~8GB)")
                     print(f"Future loads will be instant!\n")
                     
-                    # Download the specific GGUF file
-                    gguf_filename = "Llama-3.1-8B-Lexi-Uncensored-V2-Q8_0.gguf"
+                    # Get the GGUF filename for this model
+                    gguf_filename = GGUF_MODEL_FILES.get(model_name)
+                    if not gguf_filename:
+                        raise ValueError(f"GGUF filename not configured for {model_name}. Please add to GGUF_MODEL_FILES.")
+                    
                     gguf_model_path = download_gguf_model(repo_id, gguf_filename, model_name)
                     if not gguf_model_path:
                         raise ValueError(f"Failed to download {model_name}. Check your internet connection.")
@@ -967,8 +975,6 @@ class SimpleLLMCaption:
 
             if is_gguf:
                 # === GGUF MODEL GENERATION ===
-                print("🔧 Using GGUF model generation (llama-cpp-python)")
-                
                 # For GGUF models, we need to use text-based prompting since
                 # llama-cpp-python doesn't support embedding injection the same way
                 # We'll create a prompt that describes the image based on vision features
@@ -1222,8 +1228,6 @@ class SimpleLLMCaptionAdvanced:
         if image_adapter is not None:
             if is_gguf:
                 # === GGUF MODEL GENERATION (Advanced) ===
-                print("🔧 [Advanced] Using GGUF model generation")
-                
                 # Build the conversation as text
                 formatted_prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
                 formatted_prompt += "You are a helpful image captioner.<|eot_id|>"
