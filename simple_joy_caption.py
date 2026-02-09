@@ -264,6 +264,7 @@ def download_model_from_hf(repo_id, model_name=None):
 
 # Default recommended models
 DEFAULT_MODELS = {
+    "Llama-3.1-8B-Lexi-Uncensored-V2": "Orenguteng/Llama-3.1-8B-Lexi-Uncensored-V2",
     "Llama-3.1-8B-Lexi-Uncensored-V2-nf4": "John6666/Llama-3.1-8B-Lexi-Uncensored-V2-nf4",
     "Meta-Llama-3.1-8B-Instruct-bnb-4bit": "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",
 }
@@ -661,8 +662,7 @@ class SimpleLLMCaptionLoader:
             device_map=self.device,
             local_files_only=True,
             trust_remote_code=True,
-            torch_dtype=comfy.model_management.text_encoder_dtype(),
-            ignore_mismatched_sizes=True  # Allow loading quantized models with LoRA adapters
+            torch_dtype=comfy.model_management.text_encoder_dtype()
         )
 
             self.model.eval()
