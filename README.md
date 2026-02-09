@@ -101,6 +101,33 @@ That's it! On first use, the node will automatically download:
 
 This feature allows you to run the LLM model on a separate server (e.g., a more powerful machine or cloud instance) while keeping the vision processing local.
 
+### ⚠️ IMPORTANT LIMITATION
+
+**Remote mode has significant limitations compared to local inference:**
+
+- ❌ **No Vision Embeddings**: The standard llama.cpp HTTP API cannot receive pre-computed image embeddings
+- ❌ **Text-Only Prompts**: The remote LLM receives only text instructions, not actual image content
+- ❌ **Reduced Caption Quality**: Without vision embeddings, the LLM cannot truly "see" the image
+- ⚠️ **Generic Output Expected**: Captions will be less accurate and more generic compared to local mode
+
+**Why this happens:** Joy Caption's core feature is injecting vision embeddings directly into the LLM's token stream. The llama.cpp server's standard HTTP API doesn't support this, so the model generates captions without any actual visual information about the image.
+
+### When to Use Remote Mode
+
+Remote mode is best suited for:
+- 🔬 **Testing/Development** - Quick prototyping without local GPU
+- 📊 **Batch Processing with Acceptable Quality Loss** - When speed matters more than perfect accuracy
+- 🎯 **Generic Captioning Tasks** - When detailed image understanding isn't critical
+
+**For production use with high-quality captions, we recommend using local mode** where the LLM has full access to vision embeddings.
+
+### Alternative: Use a Multimodal Server
+
+For true vision capabilities in remote mode, consider:
+- Running a **LLaVA** or **Qwen-VL** server instead of standard llama.cpp
+- Using **vLLM** with vision model support
+- Implementing a custom API endpoint that accepts embeddings
+
 ### Setting Up Remote Server Mode
 
 1. **Start a llama.cpp server** on your remote machine:

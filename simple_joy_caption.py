@@ -179,6 +179,30 @@ def build_caption_prompt(caption_type, caption_length):
         # Use template [2] - text length
         return templates[2].format(length=caption_length)
 
+def create_vision_context_prompt(image_features, caption_type, caption_length):
+    """
+    Create a detailed text prompt that includes vision feature information.
+    This is used for remote llama.cpp servers that cannot receive embeddings.
+    
+    Args:
+        image_features: Tensor of vision features from the image adapter
+        caption_type: Type of caption to generate
+        caption_length: Length specification for the caption
+        
+    Returns:
+        Enhanced prompt string with vision context
+    """
+    # Get the base prompt
+    base_prompt = build_caption_prompt(caption_type, caption_length)
+    
+    # Note: Since we can't send raw embeddings over HTTP, we inform the model
+    # that this is a vision task but acknowledge the limitation
+    vision_context = """Note: You are generating a caption for an image. While you cannot see the image directly in this remote mode, provide a high-quality caption based on the prompt instructions."""
+    
+    enhanced_prompt = f"{vision_context}\n\n{base_prompt}"
+    
+    return enhanced_prompt
+
 class RemoteLlamaCppClient:
     """
     Client for communicating with a remote llama.cpp server.
@@ -662,8 +686,16 @@ class SimpleLLMCaptionLoader:
         
         # Check if remote server mode is enabled
         if use_remote_server:
-            print(f"\n🌐 Remote llama.cpp server mode enabled")
+            print(f"\n{'='*70}")
+            print(f"🌐 Remote llama.cpp server mode enabled")
             print(f"Server URL: {remote_server_url}")
+            print(f"{'='*70}")
+            print(f"⚠️  IMPORTANT LIMITATION:")
+            print(f"   Remote mode uses TEXT-ONLY prompts (no vision embeddings)")
+            print(f"   Caption quality will be SIGNIFICANTLY LOWER than local mode")
+            print(f"   The LLM cannot actually 'see' the image content")
+            print(f"   For production use, LOCAL MODE is strongly recommended")
+            print(f"{'='*70}\n")
             
             # Initialize remote client
             remote_client = RemoteLlamaCppClient(remote_server_url)
@@ -924,7 +956,10 @@ class SimpleLLMCaption:
             if use_remote_server and remote_client:
                 # Remote mode: Send text prompt only (vision capabilities limited)
                 print("🌐 Generating caption using remote llama.cpp server...")
-                print("⚠️ Note: Remote mode uses text-only prompts (vision embeddings not supported)")
+                print("⚠️ WARNING: Remote mode CANNOT see the image!")
+                print("   - LLM receives text-only prompts (no vision embeddings)")
+                print("   - Caption quality will be significantly reduced")
+                print("   - Output may be generic or inaccurate")
                 
                 # Build the conversation (Joy Caption style)
                 convo = [
@@ -933,7 +968,7 @@ class SimpleLLMCaption:
                 ]
                 
                 # Create a simple text prompt for the remote server
-                # Note: This loses the image embedding capability
+                # Note: This loses the image embedding capability - LLM has no visual information
                 full_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are a helpful image captioner.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt_str}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
                 
                 # Generate using remote server
@@ -1171,7 +1206,9 @@ class SimpleLLMCaptionAdvanced:
         if use_remote_server and remote_client:
             # Remote mode: Send text prompt only
             print("🌐 [Advanced] Generating caption using remote llama.cpp server...")
-            print("⚠️ Note: Remote mode uses text-only prompts (vision embeddings not supported)")
+            print("⚠️ WARNING: Remote mode CANNOT see the image!")
+            print("   - LLM receives text-only prompts (no vision embeddings)")
+            print("   - Caption quality will be significantly reduced")
             
             # Create a simple text prompt for the remote server
             full_prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are a helpful image captioner.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt_str}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
