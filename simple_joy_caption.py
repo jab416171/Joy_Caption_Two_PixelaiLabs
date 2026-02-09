@@ -643,8 +643,7 @@ class SimpleLLMCaptionLoader:
             device_map=self.device,
             local_files_only=True,
             trust_remote_code=True,
-            torch_dtype=comfy.model_management.text_encoder_dtype(),
-            load_in_4bit=False
+            torch_dtype=comfy.model_management.text_encoder_dtype()
         )
 
             self.model.eval()
