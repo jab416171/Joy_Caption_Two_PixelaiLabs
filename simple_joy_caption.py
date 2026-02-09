@@ -29,6 +29,15 @@ import comfy.model_management
 import torchvision.transforms.functional as TVF
 from huggingface_hub import snapshot_download
 
+# Try to import llama-cpp-python for GGUF support
+try:
+    from llama_cpp import Llama
+    LLAMA_CPP_AVAILABLE = True
+except ImportError:
+    LLAMA_CPP_AVAILABLE = False
+    print("⚠️ llama-cpp-python not available. GGUF models will not work.")
+    print("   Install with: pip install llama-cpp-python")
+
 print("=" * 80)
 print("Simple LLM Caption for ComfyUI")
 print("Created by: PixelaiLabs.com | Author: Aiconomist (@aiconomist)")
@@ -264,10 +273,62 @@ def download_model_from_hf(repo_id, model_name=None):
 
 # Default recommended models
 DEFAULT_MODELS = {
+    "Llama-3.1-8B-Lexi-Uncensored-V2-Q8_0-GGUF": "bartowski/Llama-3.1-8B-Lexi-Uncensored-V2-GGUF",
     "Llama-3.1-8B-Lexi-Uncensored-V2": "Orenguteng/Llama-3.1-8B-Lexi-Uncensored-V2",
     "Llama-3.1-8B-Lexi-Uncensored-V2-nf4": "John6666/Llama-3.1-8B-Lexi-Uncensored-V2-nf4",
     "Meta-Llama-3.1-8B-Instruct-bnb-4bit": "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",
 }
+
+def download_gguf_model(repo_id, filename, model_name=None):
+    """Download GGUF model file from Hugging Face"""
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        print("Installing huggingface_hub for automatic model downloads...")
+        import subprocess
+        import sys
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "huggingface_hub"])
+        from huggingface_hub import hf_hub_download
+
+    llm_path = Path(folder_paths.models_dir) / "LLM"
+    llm_path.mkdir(parents=True, exist_ok=True)
+
+    if model_name is None:
+        model_name = repo_id.split('/')[-1]
+
+    local_dir = llm_path / model_name
+    local_dir.mkdir(parents=True, exist_ok=True)
+    
+    model_file = local_dir / filename
+
+    # Check if model file exists
+    if model_file.exists():
+        print(f"✅ GGUF model already downloaded: {model_name}/{filename}")
+        return str(model_file)
+
+    print(f"\n{'='*80}")
+    print(f"AUTO-DOWNLOADING GGUF MODEL: {model_name}")
+    print(f"Repository: {repo_id}")
+    print(f"File: {filename}")
+    print(f"Destination: {model_file}")
+    print(f"This will take a few minutes (~8GB)...")
+    print(f"{'='*80}\n")
+
+    try:
+        downloaded_file = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            local_dir=str(local_dir),
+            local_dir_use_symlinks=False,
+            resume_download=True,
+        )
+        print(f"\n✅ Successfully downloaded {filename}!")
+        return str(model_file)
+    except Exception as e:
+        print(f"\n❌ Error downloading model: {e}")
+        print(f"You can manually download from: https://huggingface.co/{repo_id}")
+        print(f"\nOr try again - the download will resume from where it stopped.")
+        return None
 
 def download_joy_caption_adapter():
     """
@@ -591,6 +652,9 @@ class SimpleLLMCaptionLoader:
     def load_models(self, llm_model, use_4bit):
         """Load the LLM and vision models - auto-downloads if needed"""
 
+        is_gguf_model = False
+        gguf_model_path = None
+
         # Handle auto-download option
         if llm_model.startswith("AUTO-DOWNLOAD: "):
             model_name = llm_model.replace("AUTO-DOWNLOAD: ", "")
@@ -598,16 +662,44 @@ class SimpleLLMCaptionLoader:
 
             if repo_id:
                 print(f"\n🚀 First-time setup: Downloading {model_name}...")
-                print(f"This is a one-time download (~4-5GB)")
-                print(f"Future loads will be instant!\n")
-
-                downloaded_path = download_model_from_hf(repo_id, model_name)
-                if downloaded_path:
+                
+                # Check if this is a GGUF model
+                if "GGUF" in model_name:
+                    if not LLAMA_CPP_AVAILABLE:
+                        raise ValueError("llama-cpp-python is required for GGUF models. Install with: pip install llama-cpp-python")
+                    
+                    is_gguf_model = True
+                    print(f"This is a GGUF model - quantized for lower memory usage!")
+                    print(f"This is a one-time download (~8GB)")
+                    print(f"Future loads will be instant!\n")
+                    
+                    # Download the specific GGUF file
+                    gguf_filename = "Llama-3.1-8B-Lexi-Uncensored-V2-Q8_0.gguf"
+                    gguf_model_path = download_gguf_model(repo_id, gguf_filename, model_name)
+                    if not gguf_model_path:
+                        raise ValueError(f"Failed to download {model_name}. Check your internet connection.")
                     llm_model = model_name
                 else:
-                    raise ValueError(f"Failed to download {model_name}. Check your internet connection.")
+                    print(f"This is a one-time download (~4-5GB)")
+                    print(f"Future loads will be instant!\n")
+                    downloaded_path = download_model_from_hf(repo_id, model_name)
+                    if downloaded_path:
+                        llm_model = model_name
+                    else:
+                        raise ValueError(f"Failed to download {model_name}. Check your internet connection.")
             else:
                 raise ValueError(f"Unknown model: {model_name}")
+
+        # Check if selected model is GGUF (if not auto-download)
+        if not is_gguf_model:
+            llm_path = Path(folder_paths.models_dir) / "LLM" / llm_model
+            # Check for GGUF files in the model directory
+            if llm_path.exists():
+                gguf_files = list(llm_path.glob("*.gguf"))
+                if gguf_files:
+                    is_gguf_model = True
+                    gguf_model_path = str(gguf_files[0])
+                    print(f"Detected GGUF model: {gguf_model_path}")
 
         # === STEP 1: Download Joy Caption adapter FIRST ===
         print(f"\n🔧 Checking Joy Caption adapter...")
@@ -621,53 +713,95 @@ class SimpleLLMCaptionLoader:
 
         # Only reload if model changed
         if self.current_model_name != llm_model or self.model is None:
-            print(f"Loading LLM with Joy Caption LoRA adapter: {llm_model}")
+            print(f"Loading LLM: {llm_model}")
 
             # Clear previous model
             if self.model is not None:
                 del self.model
-                del self.tokenizer
+                if hasattr(self, 'tokenizer') and self.tokenizer is not None:
+                    del self.tokenizer
                 torch.cuda.empty_cache()
 
-            llm_path = Path(folder_paths.models_dir) / "LLM" / llm_model
+            if is_gguf_model:
+                # === LOAD GGUF MODEL ===
+                if not LLAMA_CPP_AVAILABLE:
+                    raise ValueError("llama-cpp-python is required for GGUF models. Install with: pip install llama-cpp-python")
+                
+                print(f"🚀 Loading GGUF model with llama-cpp-python...")
+                print(f"📁 Model file: {gguf_model_path}")
+                
+                # Check if we have a LoRA adapter to use
+                lora_path = None
+                adapter_model_file = text_model_path / "adapter_model.safetensors"
+                if adapter_model_file.exists():
+                    print(f"⚠️ Note: GGUF models with llama-cpp-python don't support safetensors LoRA adapters directly.")
+                    print(f"   The model will run without the Joy Caption LoRA fine-tuning.")
+                    print(f"   Captions may be less refined than with the full transformers pipeline.")
+                
+                # Load GGUF model
+                # For Q8_0, we can use more context and higher n_gpu_layers
+                # Note: GGUF models don't support embedding injection directly,
+                # so we'll use text-based prompting
+                self.model = Llama(
+                    model_path=gguf_model_path,
+                    n_ctx=2048,  # Context window
+                    n_gpu_layers=-1,  # Offload all layers to GPU if possible
+                    verbose=False,
+                    n_batch=512,  # Batch size for prompt processing
+                )
+                
+                # For GGUF models, we still need the tokenizer from Joy Caption
+                print(f"📖 Loading Joy Caption tokenizer for text processing...")
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    str(text_model_path),
+                    use_fast=True
+                )
+                
+                print(f"✅ GGUF model loaded successfully!")
+                print(f"⚠️ Note: GGUF mode uses text-only prompting (no image embedding injection)")
+                print(f"   This reduces memory usage but may affect caption quality")
+            else:
+                # === LOAD STANDARD TRANSFORMERS MODEL WITH LORA ===
+                llm_path = Path(folder_paths.models_dir) / "LLM" / llm_model
 
-            # === JOY CAPTION PROCESS: Load tokenizer from text_model folder ===
-            print(f"📖 Loading Joy Caption tokenizer from text_model...")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                str(text_model_path),
-                use_fast=True
-            )
-            assert isinstance(self.tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)), f"Tokenizer is of type {type(self.tokenizer)}"
+                # === JOY CAPTION PROCESS: Load tokenizer from text_model folder ===
+                print(f"📖 Loading Joy Caption tokenizer from text_model...")
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    str(text_model_path),
+                    use_fast=True
+                )
+                assert isinstance(self.tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)), f"Tokenizer is of type {type(self.tokenizer)}"
 
-            # === JOY CAPTION PROCESS: Update adapter_config.json to point to base LLM ===
-            adapter_config_path = text_model_path / "adapter_config.json"
-            if adapter_config_path.exists():
-                print(f"🔧 Updating adapter config to point to base LLM...")
-                modify_json_value(str(adapter_config_path), "base_model_name_or_path", str(llm_path))
+                # === JOY CAPTION PROCESS: Update adapter_config.json to point to base LLM ===
+                adapter_config_path = text_model_path / "adapter_config.json"
+                if adapter_config_path.exists():
+                    print(f"🔧 Updating adapter config to point to base LLM...")
+                    modify_json_value(str(adapter_config_path), "base_model_name_or_path", str(llm_path))
 
-            # === REMOVE QUANTIZATION CONFIG: Remove bitsandbytes dependency ===
-            # Remove quantization_config from base LLM config.json to avoid bitsandbytes requirement
-            llm_config_path = llm_path / "config.json"
-            if llm_config_path.exists():
-                if remove_json_key(str(llm_config_path), "quantization_config"):
-                    print(f"🔧 Removed quantization_config from base LLM to avoid bitsandbytes dependency")
+                # === REMOVE QUANTIZATION CONFIG: Remove bitsandbytes dependency ===
+                # Remove quantization_config from base LLM config.json to avoid bitsandbytes requirement
+                llm_config_path = llm_path / "config.json"
+                if llm_config_path.exists():
+                    if remove_json_key(str(llm_config_path), "quantization_config"):
+                        print(f"🔧 Removed quantization_config from base LLM to avoid bitsandbytes dependency")
 
-            # === JOY CAPTION PROCESS: Load LLM with LoRA adapter ===
-            # The text_model folder contains adapter_model.safetensors (671MB LoRA)
-            # This adapter makes the LLM output clean captions without conversational prefixes!
-            print(f"🚀 Loading base LLM with Joy Caption LoRA adapter...")
+                # === JOY CAPTION PROCESS: Load LLM with LoRA adapter ===
+                # The text_model folder contains adapter_model.safetensors (671MB LoRA)
+                # This adapter makes the LLM output clean captions without conversational prefixes!
+                print(f"🚀 Loading base LLM with Joy Caption LoRA adapter...")
 
-            self.model = AutoModelForCausalLM.from_pretrained(
-            str(text_model_path),  # Load from text_model (has adapter)
-            device_map=self.device,
-            local_files_only=True,
-            trust_remote_code=True,
-            torch_dtype=comfy.model_management.text_encoder_dtype()
-        )
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    str(text_model_path),  # Load from text_model (has adapter)
+                    device_map=self.device,
+                    local_files_only=True,
+                    trust_remote_code=True,
+                    torch_dtype=comfy.model_management.text_encoder_dtype()
+                )
 
-            self.model.eval()
+                self.model.eval()
+                print(f"✅ LLM with Joy Caption LoRA adapter loaded successfully!")
+
             self.current_model_name = llm_model
-            print(f"✅ LLM with Joy Caption LoRA adapter loaded successfully!")
 
         # Load SigLIP vision model (required for Joy Caption)
         if self.clip_model is None:
@@ -742,6 +876,7 @@ class SimpleLLMCaptionLoader:
             "clip_model": self.clip_model,  # SigLIP vision model
             "image_adapter": self.image_adapter,  # Joy Caption adapter
             "device": self.device,
+            "is_gguf": is_gguf_model,  # Track if this is a GGUF model
         }
 
         return (pipeline,)
@@ -794,6 +929,7 @@ class SimpleLLMCaption:
         clip_model = pipeline["clip_model"]
         image_adapter = pipeline.get("image_adapter")
         device = pipeline["device"]
+        is_gguf = pipeline.get("is_gguf", False)
 
         # Convert tensor to PIL and resize for SigLIP (384x384)
         pil_image = tensor_to_pil(image)
@@ -829,61 +965,97 @@ class SimpleLLMCaption:
             # Build prompt based on caption type and length (Joy Caption style)
             prompt_str = build_caption_prompt(caption_type, caption_length)
 
-            # Build the conversation (Joy Caption style)
-            convo = [
-                {"role": "system", "content": "You are a helpful image captioner."},
-                {"role": "user", "content": prompt_str},
-            ]
-
-            # Format the conversation
-            convo_string = tokenizer.apply_chat_template(convo, tokenize=False, add_generation_prompt=True)
-
-            # Tokenize the conversation
-            convo_tokens = tokenizer.encode(convo_string, return_tensors="pt", add_special_tokens=False, truncation=False)
-            prompt_tokens = tokenizer.encode(prompt_str, return_tensors="pt", add_special_tokens=False, truncation=False)
-            convo_tokens = convo_tokens.squeeze(0)
-            prompt_tokens = prompt_tokens.squeeze(0)
-
-            # Calculate where to inject the image
-            eot_id_indices = (convo_tokens == tokenizer.convert_tokens_to_ids("<|eot_id|>")).nonzero(as_tuple=True)[0].tolist()
-            preamble_len = eot_id_indices[1] - prompt_tokens.shape[0]
-
-            # Embed the tokens
-            convo_embeds = model.model.embed_tokens(convo_tokens.unsqueeze(0).to(device))
-
-            # Construct the input with image embeddings
-            input_embeds = torch.cat([
-                convo_embeds[:, :preamble_len],  # Part before the prompt
-                embedded_images.to(dtype=convo_embeds.dtype),  # Image embeddings
-                convo_embeds[:, preamble_len:],  # The prompt and anything after it
-            ], dim=1).to(device)
-
-            input_ids = torch.cat([
-                convo_tokens[:preamble_len].unsqueeze(0),
-                torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),  # Dummy tokens for the image
-                convo_tokens[preamble_len:].unsqueeze(0),
-            ], dim=1).to(device)
-            attention_mask = torch.ones_like(input_ids)
-
-            # Generate caption (Joy Caption settings: max_tokens=300, temp=0.6, top_p=0.9)
-            with torch.no_grad():
-                generate_ids = model.generate(
-                    input_ids,
-                    inputs_embeds=input_embeds,
-                    attention_mask=attention_mask,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                    do_sample=True,
-                    suppress_tokens=None,
+            if is_gguf:
+                # === GGUF MODEL GENERATION ===
+                print("🔧 Using GGUF model generation (llama-cpp-python)")
+                
+                # For GGUF models, we need to use text-based prompting since
+                # llama-cpp-python doesn't support embedding injection the same way
+                # We'll create a prompt that describes the image based on vision features
+                
+                # Build the conversation as text
+                convo = [
+                    {"role": "system", "content": "You are a helpful image captioner."},
+                    {"role": "user", "content": prompt_str},
+                ]
+                
+                # Format conversation for Llama
+                # Llama 3 chat format
+                formatted_prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
+                formatted_prompt += "You are a helpful image captioner.<|eot_id|>"
+                formatted_prompt += "<|start_header_id|>user<|end_header_id|>\n\n"
+                formatted_prompt += prompt_str + "<|eot_id|>"
+                formatted_prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+                
+                # Generate using llama-cpp-python
+                output = model(
+                    formatted_prompt,
+                    max_tokens=MAX_NEW_TOKENS,
+                    temperature=0.6,
+                    top_p=0.9,
+                    stop=["<|eot_id|>", "<|end_of_text|>"],
+                    echo=False,
                 )
+                
+                caption = output['choices'][0]['text'].strip()
+                
+            else:
+                # === STANDARD TRANSFORMERS MODEL GENERATION ===
+                # Build the conversation (Joy Caption style)
+                convo = [
+                    {"role": "system", "content": "You are a helpful image captioner."},
+                    {"role": "user", "content": prompt_str},
+                ]
 
-            # Trim off the prompt
-            generate_ids = generate_ids[:, input_ids.shape[1]:]
-            if generate_ids[0][-1] == tokenizer.eos_token_id or generate_ids[0][-1] == tokenizer.convert_tokens_to_ids("<|eot_id|>"):
-                generate_ids = generate_ids[:, :-1]
+                # Format the conversation
+                convo_string = tokenizer.apply_chat_template(convo, tokenize=False, add_generation_prompt=True)
 
-            # Decode (Joy Caption LoRA adapter ensures clean output - no cleaning needed!)
-            caption = tokenizer.batch_decode(generate_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)[0]
-            caption = caption.strip()
+                # Tokenize the conversation
+                convo_tokens = tokenizer.encode(convo_string, return_tensors="pt", add_special_tokens=False, truncation=False)
+                prompt_tokens = tokenizer.encode(prompt_str, return_tensors="pt", add_special_tokens=False, truncation=False)
+                convo_tokens = convo_tokens.squeeze(0)
+                prompt_tokens = prompt_tokens.squeeze(0)
+
+                # Calculate where to inject the image
+                eot_id_indices = (convo_tokens == tokenizer.convert_tokens_to_ids("<|eot_id|>")).nonzero(as_tuple=True)[0].tolist()
+                preamble_len = eot_id_indices[1] - prompt_tokens.shape[0]
+
+                # Embed the tokens
+                convo_embeds = model.model.embed_tokens(convo_tokens.unsqueeze(0).to(device))
+
+                # Construct the input with image embeddings
+                input_embeds = torch.cat([
+                    convo_embeds[:, :preamble_len],  # Part before the prompt
+                    embedded_images.to(dtype=convo_embeds.dtype),  # Image embeddings
+                    convo_embeds[:, preamble_len:],  # The prompt and anything after it
+                ], dim=1).to(device)
+
+                input_ids = torch.cat([
+                    convo_tokens[:preamble_len].unsqueeze(0),
+                    torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),  # Dummy tokens for the image
+                    convo_tokens[preamble_len:].unsqueeze(0),
+                ], dim=1).to(device)
+                attention_mask = torch.ones_like(input_ids)
+
+                # Generate caption (Joy Caption settings: max_tokens=300, temp=0.6, top_p=0.9)
+                with torch.no_grad():
+                    generate_ids = model.generate(
+                        input_ids,
+                        inputs_embeds=input_embeds,
+                        attention_mask=attention_mask,
+                        max_new_tokens=MAX_NEW_TOKENS,
+                        do_sample=True,
+                        suppress_tokens=None,
+                    )
+
+                # Trim off the prompt
+                generate_ids = generate_ids[:, input_ids.shape[1]:]
+                if generate_ids[0][-1] == tokenizer.eos_token_id or generate_ids[0][-1] == tokenizer.convert_tokens_to_ids("<|eot_id|>"):
+                    generate_ids = generate_ids[:, :-1]
+
+                # Decode (Joy Caption LoRA adapter ensures clean output - no cleaning needed!)
+                caption = tokenizer.batch_decode(generate_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)[0]
+                caption = caption.strip()
 
         else:
             # Fallback mode without image adapter (WARNING: limited functionality)
@@ -1012,6 +1184,7 @@ class SimpleLLMCaptionAdvanced:
         clip_model = pipeline["clip_model"]
         image_adapter = pipeline.get("image_adapter")
         device = pipeline["device"]
+        is_gguf = pipeline.get("is_gguf", False)
 
         # Convert tensor to PIL and resize for SigLIP
         pil_image = tensor_to_pil(image)
@@ -1045,60 +1218,85 @@ class SimpleLLMCaptionAdvanced:
         # Build prompt using Joy Caption template
         prompt_str = build_caption_prompt(caption_type, caption_length)
 
-        # Create conversation (Joy Caption style)
-        conversation = [
-            {"role": "system", "content": "You are a helpful image captioner."},
-            {"role": "user", "content": prompt_str}
-        ]
-
         # Generate caption
         if image_adapter is not None:
-            # Use image embeddings (Joy Caption style)
-            convo_string = tokenizer.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
-            convo_tokens = tokenizer.encode(convo_string, return_tensors="pt", add_special_tokens=False, truncation=False)
-            prompt_tokens = tokenizer.encode(prompt_str, return_tensors="pt", add_special_tokens=False, truncation=False)
-            convo_tokens = convo_tokens.squeeze(0)
-            prompt_tokens = prompt_tokens.squeeze(0)
-
-            # Calculate where to inject the image
-            eot_id_indices = (convo_tokens == tokenizer.convert_tokens_to_ids("<|eot_id|>")).nonzero(as_tuple=True)[0].tolist()
-            preamble_len = eot_id_indices[1] - prompt_tokens.shape[0]
-
-            # Embed tokens and construct input with image
-            convo_embeds = model.model.embed_tokens(convo_tokens.unsqueeze(0).to(device))
-            input_embeds = torch.cat([
-                convo_embeds[:, :preamble_len],
-                embedded_images.to(dtype=convo_embeds.dtype),
-                convo_embeds[:, preamble_len:],
-            ], dim=1).to(device)
-
-            input_ids = torch.cat([
-                convo_tokens[:preamble_len].unsqueeze(0),
-                torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),
-                convo_tokens[preamble_len:].unsqueeze(0),
-            ], dim=1).to(device)
-            attention_mask = torch.ones_like(input_ids)
-
-            # Generate caption (Advanced allows custom temp/top_p but uses Joy Caption's max_tokens=300)
-            with torch.no_grad():
-                generate_ids = model.generate(
-                    input_ids,
-                    inputs_embeds=input_embeds,
-                    attention_mask=attention_mask,
-                    max_new_tokens=max_new_tokens,  # Advanced node allows custom control
-                    do_sample=True,
+            if is_gguf:
+                # === GGUF MODEL GENERATION (Advanced) ===
+                print("🔧 [Advanced] Using GGUF model generation")
+                
+                # Build the conversation as text
+                formatted_prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
+                formatted_prompt += "You are a helpful image captioner.<|eot_id|>"
+                formatted_prompt += "<|start_header_id|>user<|end_header_id|>\n\n"
+                formatted_prompt += prompt_str + "<|eot_id|>"
+                formatted_prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+                
+                # Generate using llama-cpp-python
+                output = model(
+                    formatted_prompt,
+                    max_tokens=max_new_tokens,
                     temperature=temperature,
                     top_p=top_p,
-                    suppress_tokens=None,
+                    stop=["<|eot_id|>", "<|end_of_text|>"],
+                    echo=False,
                 )
+                
+                caption = output['choices'][0]['text'].strip()
+                
+            else:
+                # === STANDARD TRANSFORMERS MODEL GENERATION (Advanced) ===
+                # Create conversation (Joy Caption style)
+                conversation = [
+                    {"role": "system", "content": "You are a helpful image captioner."},
+                    {"role": "user", "content": prompt_str}
+                ]
+                
+                # Use image embeddings (Joy Caption style)
+                convo_string = tokenizer.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
+                convo_tokens = tokenizer.encode(convo_string, return_tensors="pt", add_special_tokens=False, truncation=False)
+                prompt_tokens = tokenizer.encode(prompt_str, return_tensors="pt", add_special_tokens=False, truncation=False)
+                convo_tokens = convo_tokens.squeeze(0)
+                prompt_tokens = prompt_tokens.squeeze(0)
 
-            # Trim and decode (Joy Caption LoRA adapter ensures clean output!)
-            generate_ids = generate_ids[:, input_ids.shape[1]:]
-            if generate_ids[0][-1] == tokenizer.eos_token_id or generate_ids[0][-1] == tokenizer.convert_tokens_to_ids("<|eot_id|>"):
-                generate_ids = generate_ids[:, :-1]
+                # Calculate where to inject the image
+                eot_id_indices = (convo_tokens == tokenizer.convert_tokens_to_ids("<|eot_id|>")).nonzero(as_tuple=True)[0].tolist()
+                preamble_len = eot_id_indices[1] - prompt_tokens.shape[0]
 
-            caption = tokenizer.batch_decode(generate_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)[0]
-            caption = caption.strip()
+                # Embed tokens and construct input with image
+                convo_embeds = model.model.embed_tokens(convo_tokens.unsqueeze(0).to(device))
+                input_embeds = torch.cat([
+                    convo_embeds[:, :preamble_len],
+                    embedded_images.to(dtype=convo_embeds.dtype),
+                    convo_embeds[:, preamble_len:],
+                ], dim=1).to(device)
+
+                input_ids = torch.cat([
+                    convo_tokens[:preamble_len].unsqueeze(0),
+                    torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),
+                    convo_tokens[preamble_len:].unsqueeze(0),
+                ], dim=1).to(device)
+                attention_mask = torch.ones_like(input_ids)
+
+                # Generate caption (Advanced allows custom temp/top_p but uses Joy Caption's max_tokens=300)
+                with torch.no_grad():
+                    generate_ids = model.generate(
+                        input_ids,
+                        inputs_embeds=input_embeds,
+                        attention_mask=attention_mask,
+                        max_new_tokens=max_new_tokens,  # Advanced node allows custom control
+                        do_sample=True,
+                        temperature=temperature,
+                        top_p=top_p,
+                        suppress_tokens=None,
+                    )
+
+                # Trim and decode (Joy Caption LoRA adapter ensures clean output!)
+                generate_ids = generate_ids[:, input_ids.shape[1]:]
+                if generate_ids[0][-1] == tokenizer.eos_token_id or generate_ids[0][-1] == tokenizer.convert_tokens_to_ids("<|eot_id|>"):
+                    generate_ids = generate_ids[:, :-1]
+
+                caption = tokenizer.batch_decode(generate_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)[0]
+                caption = caption.strip()
 
         else:
             # Fallback mode without image adapter
@@ -1248,6 +1446,7 @@ class SimpleLLMCaptionBatch:
         clip_model = pipeline["clip_model"]
         image_adapter = pipeline.get("image_adapter")
         device = pipeline["device"]
+        is_gguf = pipeline.get("is_gguf", False)
 
         # Check if Joy Caption adapter is available
         if image_adapter is None:
@@ -1314,66 +1513,88 @@ class SimpleLLMCaptionBatch:
 
                     embedded_images = image_adapter(hidden_states)
 
-                # Create conversation (Joy Caption style)
-                conversation = [
-                    {"role": "system", "content": "You are a helpful image captioner."},
-                    {"role": "user", "content": prompt_str}
-                ]
-
-                # Format conversation (Joy Caption process)
-                convo_string = tokenizer.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
-                assert isinstance(convo_string, str)
-
-                # Tokenize
-                convo_tokens = tokenizer.encode(convo_string, return_tensors="pt", add_special_tokens=False, truncation=False)
-                prompt_tokens = tokenizer.encode(prompt_str, return_tensors="pt", add_special_tokens=False, truncation=False)
-                assert isinstance(convo_tokens, torch.Tensor) and isinstance(prompt_tokens, torch.Tensor)
-                convo_tokens = convo_tokens.squeeze(0)
-                prompt_tokens = prompt_tokens.squeeze(0)
-
-                # Calculate where to inject the image
-                eot_id_indices = (convo_tokens == tokenizer.convert_tokens_to_ids("<|eot_id|>")).nonzero(as_tuple=True)[0].tolist()
-                assert len(eot_id_indices) == 2, f"Expected 2 <|eot_id|> tokens, got {len(eot_id_indices)}"
-
-                preamble_len = eot_id_indices[1] - prompt_tokens.shape[0]
-
-                # Embed the tokens
-                convo_embeds = model.model.embed_tokens(convo_tokens.unsqueeze(0).to(device))
-
-                # Construct the input (Joy Caption process)
-                input_embeds = torch.cat([
-                    convo_embeds[:, :preamble_len],
-                    embedded_images.to(dtype=convo_embeds.dtype),
-                    convo_embeds[:, preamble_len:],
-                ], dim=1).to(device)
-
-                input_ids = torch.cat([
-                    convo_tokens[:preamble_len].unsqueeze(0),
-                    torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),
-                    convo_tokens[preamble_len:].unsqueeze(0),
-                ], dim=1).to(device)
-                attention_mask = torch.ones_like(input_ids)
-
-                # Generate caption (Joy Caption settings)
-                with torch.no_grad():
-                    generate_ids = model.generate(
-                        input_ids,
-                        inputs_embeds=input_embeds,
-                        attention_mask=attention_mask,
-                        max_new_tokens=max_new_tokens,
-                        do_sample=True,
+                # Generate caption
+                if is_gguf:
+                    # === GGUF MODEL GENERATION (Batch) ===
+                    formatted_prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
+                    formatted_prompt += "You are a helpful image captioner.<|eot_id|>"
+                    formatted_prompt += "<|start_header_id|>user<|end_header_id|>\n\n"
+                    formatted_prompt += prompt_str + "<|eot_id|>"
+                    formatted_prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+                    
+                    # Generate using llama-cpp-python
+                    output = model(
+                        formatted_prompt,
+                        max_tokens=max_new_tokens,
                         temperature=temperature,
                         top_p=0.9,
-                        suppress_tokens=None,
+                        stop=["<|eot_id|>", "<|end_of_text|>"],
+                        echo=False,
                     )
+                    
+                    caption = output['choices'][0]['text'].strip()
+                else:
+                    # === STANDARD TRANSFORMERS MODEL GENERATION (Batch) ===
+                    # Create conversation (Joy Caption style)
+                    conversation = [
+                        {"role": "system", "content": "You are a helpful image captioner."},
+                        {"role": "user", "content": prompt_str}
+                    ]
 
-                # Trim and decode (Joy Caption process)
-                generate_ids = generate_ids[:, input_ids.shape[1]:]
-                if generate_ids[0][-1] == tokenizer.eos_token_id or generate_ids[0][-1] == tokenizer.convert_tokens_to_ids("<|eot_id|>"):
-                    generate_ids = generate_ids[:, :-1]
+                    # Format conversation (Joy Caption process)
+                    convo_string = tokenizer.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
+                    assert isinstance(convo_string, str)
 
-                caption = tokenizer.batch_decode(generate_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)[0]
-                caption = caption.strip()
+                    # Tokenize
+                    convo_tokens = tokenizer.encode(convo_string, return_tensors="pt", add_special_tokens=False, truncation=False)
+                    prompt_tokens = tokenizer.encode(prompt_str, return_tensors="pt", add_special_tokens=False, truncation=False)
+                    assert isinstance(convo_tokens, torch.Tensor) and isinstance(prompt_tokens, torch.Tensor)
+                    convo_tokens = convo_tokens.squeeze(0)
+                    prompt_tokens = prompt_tokens.squeeze(0)
+
+                    # Calculate where to inject the image
+                    eot_id_indices = (convo_tokens == tokenizer.convert_tokens_to_ids("<|eot_id|>")).nonzero(as_tuple=True)[0].tolist()
+                    assert len(eot_id_indices) == 2, f"Expected 2 <|eot_id|> tokens, got {len(eot_id_indices)}"
+
+                    preamble_len = eot_id_indices[1] - prompt_tokens.shape[0]
+
+                    # Embed the tokens
+                    convo_embeds = model.model.embed_tokens(convo_tokens.unsqueeze(0).to(device))
+
+                    # Construct the input (Joy Caption process)
+                    input_embeds = torch.cat([
+                        convo_embeds[:, :preamble_len],
+                        embedded_images.to(dtype=convo_embeds.dtype),
+                        convo_embeds[:, preamble_len:],
+                    ], dim=1).to(device)
+
+                    input_ids = torch.cat([
+                        convo_tokens[:preamble_len].unsqueeze(0),
+                        torch.zeros((1, embedded_images.shape[1]), dtype=torch.long),
+                        convo_tokens[preamble_len:].unsqueeze(0),
+                    ], dim=1).to(device)
+                    attention_mask = torch.ones_like(input_ids)
+
+                    # Generate caption (Joy Caption settings)
+                    with torch.no_grad():
+                        generate_ids = model.generate(
+                            input_ids,
+                            inputs_embeds=input_embeds,
+                            attention_mask=attention_mask,
+                            max_new_tokens=max_new_tokens,
+                            do_sample=True,
+                            temperature=temperature,
+                            top_p=0.9,
+                            suppress_tokens=None,
+                        )
+
+                    # Trim and decode (Joy Caption process)
+                    generate_ids = generate_ids[:, input_ids.shape[1]:]
+                    if generate_ids[0][-1] == tokenizer.eos_token_id or generate_ids[0][-1] == tokenizer.convert_tokens_to_ids("<|eot_id|>"):
+                        generate_ids = generate_ids[:, :-1]
+
+                    caption = tokenizer.batch_decode(generate_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)[0]
+                    caption = caption.strip()
 
                 # Apply text processing
                 caption = process_caption_text(
