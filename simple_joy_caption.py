@@ -9,6 +9,7 @@ Automatic model downloading and setup - just clone and go!
 
 import os
 import re
+import json
 import torch
 import torch.nn as nn
 import numpy as np
@@ -190,12 +191,22 @@ def tensor_to_pil(tensor):
 
 def modify_json_value(file_path, key, new_value):
     """Modify a specific value in a JSON file (Joy Caption helper function)"""
-    import json
     with open(file_path, 'r') as f:
         data = json.load(f)
     data[key] = new_value
     with open(file_path, 'w') as f:
         json.dump(data, f, indent=2)
+
+def remove_json_key(file_path, key):
+    """Remove a specific key from a JSON file"""
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    if key in data:
+        del data[key]
+        with open(file_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
+    return False
 
 def download_model_from_hf(repo_id, model_name=None):
     """Auto-download model from Hugging Face"""
@@ -633,6 +644,13 @@ class SimpleLLMCaptionLoader:
                 print(f"🔧 Updating adapter config to point to base LLM...")
                 modify_json_value(str(adapter_config_path), "base_model_name_or_path", str(llm_path))
 
+            # === REMOVE QUANTIZATION CONFIG: Remove bitsandbytes dependency ===
+            # Remove quantization_config from base LLM config.json to avoid bitsandbytes requirement
+            llm_config_path = llm_path / "config.json"
+            if llm_config_path.exists():
+                if remove_json_key(str(llm_config_path), "quantization_config"):
+                    print(f"🔧 Removed quantization_config from base LLM to avoid bitsandbytes dependency")
+
             # === JOY CAPTION PROCESS: Load LLM with LoRA adapter ===
             # The text_model folder contains adapter_model.safetensors (671MB LoRA)
             # This adapter makes the LLM output clean captions without conversational prefixes!
@@ -643,8 +661,7 @@ class SimpleLLMCaptionLoader:
             device_map=self.device,
             local_files_only=True,
             trust_remote_code=True,
-            torch_dtype=comfy.model_management.text_encoder_dtype(),
-            load_in_4bit=False
+            torch_dtype=comfy.model_management.text_encoder_dtype()
         )
 
             self.model.eval()
