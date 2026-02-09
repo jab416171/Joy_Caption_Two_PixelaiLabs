@@ -16,6 +16,13 @@
 
 ## 🔔 Latest Updates
 
+### February 2026 - GGUF Support for Low VRAM
+- ✅ **GGUF Model Support** - Added support for quantized GGUF models using llama-cpp-python
+- ✅ **Q8_0 Quantization** - Use Llama-3.1-8B-Lexi-Uncensored-V2-Q8_0 GGUF model (8GB download)
+- ✅ **Reduced VRAM Usage** - GGUF models use significantly less VRAM than unquantized models
+- ✅ **Automatic Download** - GGUF models download automatically when selected
+- ⚠️ **Note**: GGUF models use text-based prompting (no embedding injection like transformers)
+
 ### November 6, 2025 - VRAM Management Update
 - ✅ **Automatic VRAM Management** - Models now automatically unload from VRAM after each caption generation
 - ✅ **Smart Reloading** - Models reload to GPU only when needed for the next caption
@@ -99,7 +106,8 @@ That's it! On first use, the node will automatically download:
 ```
 
 1. **Add "Simple LLM Caption Loader" node**
-   - Select LLM: "AUTO-DOWNLOAD: Llama-3.1-8B-Lexi-Uncensored-V2-nf4" (recommended)
+   - Select LLM: **"AUTO-DOWNLOAD: Llama-3.1-8B-Lexi-Uncensored-V2-Q8_0-GGUF"** (recommended for low VRAM)
+   - Alternative: "AUTO-DOWNLOAD: Llama-3.1-8B-Lexi-Uncensored-V2-nf4" (full transformers model)
    - Models download automatically on first run
 
 2. **Add "Simple LLM Caption" node**
@@ -164,12 +172,15 @@ Loads the LLM and Joy Caption adapter models.
 
 **Parameters:**
 - `llm_model` - Choose from dropdown (AUTO-DOWNLOAD options shown first)
-  - Recommended: "AUTO-DOWNLOAD: Llama-3.1-8B-Lexi-Uncensored-V2-nf4"
+  - **Recommended for low VRAM**: "AUTO-DOWNLOAD: Llama-3.1-8B-Lexi-Uncensored-V2-Q8_0-GGUF" (GGUF format, ~8GB download)
+  - Alternative: "AUTO-DOWNLOAD: Llama-3.1-8B-Lexi-Uncensored-V2-nf4" (transformers, ~4-5GB)
   - Only shows Llama-based models (Joy Caption compatible)
   - Automatically filters out incompatible models (Florence, CLIP, etc.)
-- `use_4bit` - Enable 4-bit quantization (recommended for 8GB VRAM)
+- `use_4bit` - Enable 4-bit quantization (only for non-GGUF transformers models)
 
-**Note:** Vision model (SigLIP) downloads automatically - no selection needed!
+**Note:** 
+- Vision model (SigLIP) downloads automatically - no selection needed!
+- GGUF models use llama-cpp-python and are optimized for lower VRAM usage
 
 ### 2. Simple LLM Caption
 Generate captions for single images.
@@ -212,10 +223,15 @@ Batch process folders with chronological naming for training.
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| **VRAM** | 8GB (with 4-bit) | 12GB+ |
+| **VRAM** | 6GB (with Q8_0 GGUF) | 12GB+ |
 | **RAM** | 16GB | 32GB+ |
 | **Storage** | 10GB free | 20GB+ free |
 | **Python** | 3.10+ | 3.11 |
+
+**Model Options:**
+- **Q8_0 GGUF**: Best for low VRAM (6-8GB), quantized model
+- **4-bit Transformers**: Good for medium VRAM (8-10GB)
+- **Full Transformers**: Requires high VRAM (12GB+)
 
 ---
 
