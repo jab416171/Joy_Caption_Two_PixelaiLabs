@@ -264,6 +264,7 @@ def download_model_from_hf(repo_id, model_name=None):
 
 # Default recommended models
 DEFAULT_MODELS = {
+    "Llama-3.1-8B-Lexi-Uncensored-V2": "Orenguteng/Llama-3.1-8B-Lexi-Uncensored-V2",
     "Llama-3.1-8B-Lexi-Uncensored-V2-nf4": "John6666/Llama-3.1-8B-Lexi-Uncensored-V2-nf4",
     "Meta-Llama-3.1-8B-Instruct-bnb-4bit": "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit",
 }
