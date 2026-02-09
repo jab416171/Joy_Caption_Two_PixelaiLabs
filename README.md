@@ -16,12 +16,12 @@
 
 ## 🔔 Latest Updates
 
-### February 2026 - Remote llama.cpp Server Support
-- ✅ **Remote LLM Inference** - Offload LLM work to a remote llama.cpp server
-- ✅ **Flexible Deployment** - Run LLM on powerful remote machines or cloud instances
-- ✅ **VRAM Optimization** - Keep vision processing local while offloading LLM inference
-- ✅ **Easy Configuration** - Simple checkbox and URL input in the loader node
-- 🎯 **Perfect for distributed setups** - Share powerful LLM servers across multiple workstations
+### February 2026 - Remote Joy Caption Server
+- ✅ **Full Remote Pipeline** - Run complete Joy Caption (vision + LLM) on remote servers
+- ✅ **Identical Quality** - Remote mode maintains full vision capabilities
+- ✅ **VRAM Optimization** - Offload everything to powerful remote machines
+- ✅ **Easy Setup** - Simple Flask-based server included
+- 🎯 **Perfect for distributed setups** - Share GPU servers across multiple workstations
 
 ### November 6, 2025 - VRAM Management Update
 - ✅ **Automatic VRAM Management** - Models now automatically unload from VRAM after each caption generation
@@ -92,66 +92,71 @@ That's it! On first use, the node will automatically download:
 | **Text Processing** | Replace gender/age, hair, body type, remove tattoos/jewelry |
 | **Batch Processing** | Process entire folders with chronological naming for training |
 | **Dual Outputs** | Advanced node outputs positive + negative prompts |
+| **Remote Server Support** | Run complete pipeline on remote servers with full vision capability |
 
 ---
 
-## 🌐 Remote llama.cpp Server Support
+## 🌐 Remote Joy Caption Server
 
-**NEW: Offload LLM inference to a remote llama.cpp server!**
+**NEW: Offload the entire Joy Caption pipeline to a remote server!**
 
-This feature allows you to run the LLM model on a separate server (e.g., a more powerful machine or cloud instance) while keeping the vision processing local.
+This feature allows you to run the complete vision + LLM pipeline on a separate server (e.g., a more powerful machine or cloud instance), maintaining **FULL vision capabilities and caption quality**.
 
-### ⚠️ IMPORTANT LIMITATION
+### ✅ Full Vision Support
 
-**Remote mode has significant limitations compared to local inference:**
+Unlike basic llama.cpp servers, our remote solution runs the **COMPLETE Joy Caption pipeline**:
+- ✅ **SigLIP Vision Processing** - Image understanding happens on remote server
+- ✅ **Image Adapter** - Vision-to-language translation on remote server
+- ✅ **LLM with LoRA** - Caption generation with full visual context
+- ✅ **Identical Quality** - Remote mode produces the SAME high-quality output as local mode
 
-- ❌ **No Vision Embeddings**: The standard llama.cpp HTTP API cannot receive pre-computed image embeddings
-- ❌ **Text-Only Prompts**: The remote LLM receives only text instructions, not actual image content
-- ❌ **Reduced Caption Quality**: Without vision embeddings, the LLM cannot truly "see" the image
-- ⚠️ **Generic Output Expected**: Captions will be less accurate and more generic compared to local mode
+### Setting Up Remote Server
 
-**Why this happens:** Joy Caption's core feature is injecting vision embeddings directly into the LLM's token stream. The llama.cpp server's standard HTTP API doesn't support this, so the model generates captions without any actual visual information about the image.
-
-### When to Use Remote Mode
-
-Remote mode is best suited for:
-- 🔬 **Testing/Development** - Quick prototyping without local GPU
-- 📊 **Batch Processing with Acceptable Quality Loss** - When speed matters more than perfect accuracy
-- 🎯 **Generic Captioning Tasks** - When detailed image understanding isn't critical
-
-**For production use with high-quality captions, we recommend using local mode** where the LLM has full access to vision embeddings.
-
-### Alternative: Use a Multimodal Server
-
-For true vision capabilities in remote mode, consider:
-- Running a **LLaVA** or **Qwen-VL** server instead of standard llama.cpp
-- Using **vLLM** with vision model support
-- Implementing a custom API endpoint that accepts embeddings
-
-### Setting Up Remote Server Mode
-
-1. **Start a llama.cpp server** on your remote machine:
+1. **On your remote server** (GPU machine, cloud instance, etc.):
    ```bash
-   # Example using llama.cpp server
-   ./server -m models/llama-3.1-8b.gguf -c 4096 --host 0.0.0.0 --port 8080
+   cd Joy_Caption_Two_PixelaiLabs
+   pip install -r requirements.txt
+   python joy_caption_server.py --host 0.0.0.0 --port 8000 --model "Llama-3.1-8B-Lexi-Uncensored-V2-nf4"
    ```
 
-2. **Configure the loader node**:
+2. **On your ComfyUI client** machine:
+   - Add "Simple LLM Caption Loader" node
    - Enable `use_remote_server` checkbox
-   - Set `remote_server_url` to your server address (e.g., `http://192.168.1.100:8080`)
-
-3. **Important Notes**:
-   - ⚠️ Remote mode uses **text-only prompts** (vision embeddings cannot be sent over HTTP)
-   - Vision features are still extracted locally and used to generate descriptive text prompts
-   - This is ideal for offloading compute-heavy LLM inference while keeping vision processing local
-   - Make sure your llama.cpp server is loaded with a Llama 3.1 compatible model
+   - Set `remote_server_url` to your server (e.g., `http://192.168.1.100:8000`)
+   - Connect and generate captions!
 
 ### Benefits of Remote Mode
-- 🚀 **Offload GPU Usage** - Free up local VRAM by running LLM remotely
-- ⚡ **Faster Inference** - Use powerful remote servers for generation
-- 🔄 **Scalability** - Multiple clients can share one powerful server
-- 💰 **Cost Effective** - Use cloud GPU instances only when needed
 
+- 🚀 **Offload GPU Work** - Free up local VRAM completely (vision + LLM run remotely)
+- ⚡ **Powerful Hardware** - Use cloud GPUs or dedicated servers
+- 🔄 **Multi-User** - Multiple ComfyUI instances can share one server
+- 💰 **Cost Effective** - Rent GPU instances only when needed
+- 📡 **Network Efficiency** - Only images and captions are transmitted (not embeddings)
+
+### Server API
+
+The Joy Caption Server provides a simple REST API:
+
+**POST /caption**
+```json
+{
+  "image": "base64_encoded_image_data",
+  "caption_type": "Descriptive",
+  "caption_length": "medium-length",
+  "lora_trigger": "",
+  ...
+}
+```
+
+**Response**
+```json
+{
+  "success": true,
+  "caption": "A young woman with long blonde hair..."
+}
+```
+
+---
 ---
 
 ## 🚀 Usage
@@ -226,18 +231,18 @@ Ready to use with Kohya, aitoolkit, or any training tool!
 ## ⚙️ Nodes
 
 ### 1. Simple LLM Caption Loader
-Loads the LLM and Joy Caption adapter models.
+Loads the LLM and Joy Caption adapter models (local or remote).
 
 **Parameters:**
 - `llm_model` - Choose from dropdown (AUTO-DOWNLOAD options shown first)
   - Recommended: "AUTO-DOWNLOAD: Llama-3.1-8B-Lexi-Uncensored-V2-nf4"
   - Only shows Llama-based models (Joy Caption compatible)
   - Automatically filters out incompatible models (Florence, CLIP, etc.)
-- `use_4bit` - Enable 4-bit quantization (recommended for 8GB VRAM)
-- `use_remote_server` - Enable remote llama.cpp server mode (optional)
-- `remote_server_url` - URL of remote llama.cpp server (default: http://localhost:8080)
+- `use_4bit` - Enable 4-bit quantization (recommended for 8GB VRAM, local mode only)
+- `use_remote_server` - Enable remote Joy Caption server mode (optional)
+- `remote_server_url` - URL of remote Joy Caption server (default: http://localhost:8000)
 
-**Note:** Vision model (SigLIP) downloads automatically - no selection needed!
+**Note:** Vision model (SigLIP) downloads automatically in local mode - no selection needed!
 
 ### 2. Simple LLM Caption
 Generate captions for single images.
