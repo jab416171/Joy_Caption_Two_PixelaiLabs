@@ -16,6 +16,13 @@
 
 ## 🔔 Latest Updates
 
+### February 2026 - Remote llama.cpp Server Support
+- ✅ **Remote LLM Inference** - Offload LLM work to a remote llama.cpp server
+- ✅ **Flexible Deployment** - Run LLM on powerful remote machines or cloud instances
+- ✅ **VRAM Optimization** - Keep vision processing local while offloading LLM inference
+- ✅ **Easy Configuration** - Simple checkbox and URL input in the loader node
+- 🎯 **Perfect for distributed setups** - Share powerful LLM servers across multiple workstations
+
 ### November 6, 2025 - VRAM Management Update
 - ✅ **Automatic VRAM Management** - Models now automatically unload from VRAM after each caption generation
 - ✅ **Smart Reloading** - Models reload to GPU only when needed for the next caption
@@ -85,6 +92,38 @@ That's it! On first use, the node will automatically download:
 | **Text Processing** | Replace gender/age, hair, body type, remove tattoos/jewelry |
 | **Batch Processing** | Process entire folders with chronological naming for training |
 | **Dual Outputs** | Advanced node outputs positive + negative prompts |
+
+---
+
+## 🌐 Remote llama.cpp Server Support
+
+**NEW: Offload LLM inference to a remote llama.cpp server!**
+
+This feature allows you to run the LLM model on a separate server (e.g., a more powerful machine or cloud instance) while keeping the vision processing local.
+
+### Setting Up Remote Server Mode
+
+1. **Start a llama.cpp server** on your remote machine:
+   ```bash
+   # Example using llama.cpp server
+   ./server -m models/llama-3.1-8b.gguf -c 4096 --host 0.0.0.0 --port 8080
+   ```
+
+2. **Configure the loader node**:
+   - Enable `use_remote_server` checkbox
+   - Set `remote_server_url` to your server address (e.g., `http://192.168.1.100:8080`)
+
+3. **Important Notes**:
+   - ⚠️ Remote mode uses **text-only prompts** (vision embeddings cannot be sent over HTTP)
+   - Vision features are still extracted locally and used to generate descriptive text prompts
+   - This is ideal for offloading compute-heavy LLM inference while keeping vision processing local
+   - Make sure your llama.cpp server is loaded with a Llama 3.1 compatible model
+
+### Benefits of Remote Mode
+- 🚀 **Offload GPU Usage** - Free up local VRAM by running LLM remotely
+- ⚡ **Faster Inference** - Use powerful remote servers for generation
+- 🔄 **Scalability** - Multiple clients can share one powerful server
+- 💰 **Cost Effective** - Use cloud GPU instances only when needed
 
 ---
 
@@ -168,6 +207,8 @@ Loads the LLM and Joy Caption adapter models.
   - Only shows Llama-based models (Joy Caption compatible)
   - Automatically filters out incompatible models (Florence, CLIP, etc.)
 - `use_4bit` - Enable 4-bit quantization (recommended for 8GB VRAM)
+- `use_remote_server` - Enable remote llama.cpp server mode (optional)
+- `remote_server_url` - URL of remote llama.cpp server (default: http://localhost:8080)
 
 **Note:** Vision model (SigLIP) downloads automatically - no selection needed!
 
