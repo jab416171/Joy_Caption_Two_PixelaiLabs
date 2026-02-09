@@ -9,6 +9,7 @@ Automatic model downloading and setup - just clone and go!
 
 import os
 import re
+import json
 import torch
 import torch.nn as nn
 import numpy as np
@@ -190,7 +191,6 @@ def tensor_to_pil(tensor):
 
 def modify_json_value(file_path, key, new_value):
     """Modify a specific value in a JSON file (Joy Caption helper function)"""
-    import json
     with open(file_path, 'r') as f:
         data = json.load(f)
     data[key] = new_value
@@ -199,7 +199,6 @@ def modify_json_value(file_path, key, new_value):
 
 def remove_json_key(file_path, key):
     """Remove a specific key from a JSON file"""
-    import json
     with open(file_path, 'r') as f:
         data = json.load(f)
     if key in data:
