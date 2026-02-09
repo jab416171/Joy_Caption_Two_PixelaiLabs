@@ -16,6 +16,13 @@
 
 ## 🔔 Latest Updates
 
+### February 2026 - Remote Joy Caption Server
+- ✅ **Full Remote Pipeline** - Run complete Joy Caption (vision + LLM) on remote servers
+- ✅ **Identical Quality** - Remote mode maintains full vision capabilities
+- ✅ **VRAM Optimization** - Offload everything to powerful remote machines
+- ✅ **Easy Setup** - Simple Flask-based server included
+- 🎯 **Perfect for distributed setups** - Share GPU servers across multiple workstations
+
 ### November 6, 2025 - VRAM Management Update
 - ✅ **Automatic VRAM Management** - Models now automatically unload from VRAM after each caption generation
 - ✅ **Smart Reloading** - Models reload to GPU only when needed for the next caption
@@ -85,7 +92,71 @@ That's it! On first use, the node will automatically download:
 | **Text Processing** | Replace gender/age, hair, body type, remove tattoos/jewelry |
 | **Batch Processing** | Process entire folders with chronological naming for training |
 | **Dual Outputs** | Advanced node outputs positive + negative prompts |
+| **Remote Server Support** | Run complete pipeline on remote servers with full vision capability |
 
+---
+
+## 🌐 Remote Joy Caption Server
+
+**NEW: Offload the entire Joy Caption pipeline to a remote server!**
+
+This feature allows you to run the complete vision + LLM pipeline on a separate server (e.g., a more powerful machine or cloud instance), maintaining **FULL vision capabilities and caption quality**.
+
+### ✅ Full Vision Support
+
+Unlike basic llama.cpp servers, our remote solution runs the **COMPLETE Joy Caption pipeline**:
+- ✅ **SigLIP Vision Processing** - Image understanding happens on remote server
+- ✅ **Image Adapter** - Vision-to-language translation on remote server
+- ✅ **LLM with LoRA** - Caption generation with full visual context
+- ✅ **Identical Quality** - Remote mode produces the SAME high-quality output as local mode
+
+### Setting Up Remote Server
+
+1. **On your remote server** (GPU machine, cloud instance, etc.):
+   ```bash
+   cd Joy_Caption_Two_PixelaiLabs
+   pip install -r requirements.txt
+   python joy_caption_server.py --host 0.0.0.0 --port 8000 --model "Llama-3.1-8B-Lexi-Uncensored-V2-nf4"
+   ```
+
+2. **On your ComfyUI client** machine:
+   - Add "Simple LLM Caption Loader" node
+   - Enable `use_remote_server` checkbox
+   - Set `remote_server_url` to your server (e.g., `http://192.168.1.100:8000`)
+   - Connect and generate captions!
+
+### Benefits of Remote Mode
+
+- 🚀 **Offload GPU Work** - Free up local VRAM completely (vision + LLM run remotely)
+- ⚡ **Powerful Hardware** - Use cloud GPUs or dedicated servers
+- 🔄 **Multi-User** - Multiple ComfyUI instances can share one server
+- 💰 **Cost Effective** - Rent GPU instances only when needed
+- 📡 **Network Efficiency** - Only images and captions are transmitted (not embeddings)
+
+### Server API
+
+The Joy Caption Server provides a simple REST API:
+
+**POST /caption**
+```json
+{
+  "image": "base64_encoded_image_data",
+  "caption_type": "Descriptive",
+  "caption_length": "medium-length",
+  "lora_trigger": "",
+  ...
+}
+```
+
+**Response**
+```json
+{
+  "success": true,
+  "caption": "A young woman with long blonde hair..."
+}
+```
+
+---
 ---
 
 ## 🚀 Usage
@@ -160,16 +231,18 @@ Ready to use with Kohya, aitoolkit, or any training tool!
 ## ⚙️ Nodes
 
 ### 1. Simple LLM Caption Loader
-Loads the LLM and Joy Caption adapter models.
+Loads the LLM and Joy Caption adapter models (local or remote).
 
 **Parameters:**
 - `llm_model` - Choose from dropdown (AUTO-DOWNLOAD options shown first)
   - Recommended: "AUTO-DOWNLOAD: Llama-3.1-8B-Lexi-Uncensored-V2-nf4"
   - Only shows Llama-based models (Joy Caption compatible)
   - Automatically filters out incompatible models (Florence, CLIP, etc.)
-- `use_4bit` - Enable 4-bit quantization (recommended for 8GB VRAM)
+- `use_4bit` - Enable 4-bit quantization (recommended for 8GB VRAM, local mode only)
+- `use_remote_server` - Enable remote Joy Caption server mode (optional)
+- `remote_server_url` - URL of remote Joy Caption server (default: http://localhost:8000)
 
-**Note:** Vision model (SigLIP) downloads automatically - no selection needed!
+**Note:** Vision model (SigLIP) downloads automatically in local mode - no selection needed!
 
 ### 2. Simple LLM Caption
 Generate captions for single images.
